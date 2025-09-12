@@ -8,7 +8,7 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-api_key = os.getenv("GOOGLE_API_KEY")
+api_key = os.getenv("GOOGLE_API_KEY") or "AIzaSyB__1QK2C5QK3zGlztS2GSXI8P4t6L1cAg"
 if not api_key:
     logging.warning("GOOGLE_API_KEY not set in .env, using stub responses for AI agent.")
     api_key = None
