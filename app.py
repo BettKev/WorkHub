@@ -1,8 +1,9 @@
+# app.py
 import tkinter as tk
 import logging
-from dotenv import load_dotenv
-from supabase import create_client, Client
-import os
+
+# Import Supabase client
+from db import supabase  
 
 # Import windows
 from windows.login import login_window
@@ -10,16 +11,6 @@ from windows.signup import signup_window
 
 # --- Setup Logging ---
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s")
-
-# --- Load environment ---
-load_dotenv()
-url = os.getenv("SUPABASE_URL")
-key = os.getenv("SUPABASE_KEY")
-
-if not url or not key:
-    logging.error("Missing SUPABASE_URL or SUPABASE_KEY in environment!")
-
-supabase: Client = create_client(url, key)
 
 # --- Global Tkinter Root ---
 root = tk.Tk()
@@ -37,20 +28,21 @@ tk.Label(
     justify="center"
 ).pack(pady=20)
 
-# Pass root + supabase client to windows
+# Pass only root (supabase is global now)
 tk.Button(
     frame,
     text="Login",
     width=20,
     font=("Gothic", 12),
-    command=lambda: login_window(root, supabase)
+    command=lambda: login_window(root)
 ).pack(pady=5)
 
-tk.Button(frame,
-          text="Sign Up",
-          width=20,
-          font=("Gothic", 12),
-          command=lambda: signup_window(root, supabase)
+tk.Button(
+    frame,
+    text="Sign Up",
+    width=20,
+    font=("Gothic", 12),
+    command=lambda: signup_window(root)
 ).pack(pady=5)
 
 root.mainloop()

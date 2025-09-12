@@ -1,9 +1,11 @@
+# windows/login.py
 import tkinter as tk
 from tkinter import messagebox
 import logging
 from .dashboard import open_dashboard
+from db import supabase
 
-def login_window(root, supabase):
+def login_window(root):
     # Close root when opening login
     root.withdraw()  
 
@@ -38,7 +40,7 @@ def login_window(root, supabase):
             if user and user.user:
                 # messagebox.showinfo("Login", "Login successful!")
                 win.destroy()
-                open_dashboard(root, user.user.email, supabase, user.user.id)  # go to dashboard
+                open_dashboard(root, user.user.email, user.user.id)  # go to dashboard
             else:
                 messagebox.showerror("Login", "Login failed.")
         except Exception as e:

@@ -1,11 +1,13 @@
+# windows/dashboard.py
 import tkinter as tk
 import platform
 from views.dashboard import dashboard_view
 from views.projects import projects_view
 from views.profile import profile_view
 from views.settings import settings_view
+from db import supabase
 
-def open_dashboard(root, user_email, user_id, supabase):
+def open_dashboard(root, user_email, user_id):
     root.withdraw()
 
     dash = tk.Toplevel(root)
@@ -48,9 +50,9 @@ def open_dashboard(root, user_email, user_id, supabase):
 
     # Navigation
     nav_items = [
-        ("🏠 Dashboard", lambda: dashboard_view(content_frame)),
-        ("📂 Projects", lambda: projects_view(content_frame, supabase, user_id)),
-        ("👤 Profile", lambda: profile_view(content_frame, user_email, user_id, supabase)),
+        ("🏠 Dashboard", lambda: dashboard_view(content_frame, user_id, user_email)),
+        ("📂 Projects", lambda: projects_view(content_frame, user_id)),
+        ("👤 Profile", lambda: profile_view(content_frame, user_email, user_id)),
         ("⚙️ Settings", lambda: settings_view(content_frame)),
     ]
     for text, command in nav_items:
@@ -76,6 +78,6 @@ def open_dashboard(root, user_email, user_id, supabase):
     ).pack(side="bottom", fill="x")
 
     # Default view
-    dashboard_view(content_frame)
+    dashboard_view(content_frame, user_id, user_email)
 
     dash.protocol("WM_DELETE_WINDOW", logout)

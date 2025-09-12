@@ -1,3 +1,4 @@
+# views/settings.py
 import tkinter as tk
 
 def settings_view(content_frame):

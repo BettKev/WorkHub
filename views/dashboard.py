@@ -1,8 +1,9 @@
+# views/dashboard.py
 import tkinter as tk
-import random
-from datetime import datetime
+import logging
+from db import supabase
 
-def dashboard_view(content_frame, supabase=None, user_id=None):
+def dashboard_view(content_frame, user_id, user_email=None):
     for widget in content_frame.winfo_children():
         widget.destroy()
 
@@ -20,112 +21,173 @@ def dashboard_view(content_frame, supabase=None, user_id=None):
     stats_frame.pack(fill="x", pady=15, padx=20)
 
     stats = {
-        "Active Projects": random.randint(1, 10),
-        "Completed Tasks": random.randint(10, 50),
-        "Earnings ($)": random.randint(200, 2000),
-        "Pending Tasks": random.randint(1, 15),
-        "Messages": random.randint(0, 10),
-        "Rating": f"{round(random.uniform(3.5, 5.0), 1)} ⭐",
+        "Active Projects": 0,
+        "Completed Tasks": 0,
+        "Earnings ($)": 0,
+        "Unread Messages": 0,
+        "Rating": "N/A",
     }
+
+    try:
+        # Step 1: Get project IDs where user has an accepted application
+        resp = supabase.table("applications") \
+            .select("project_id") \
+            .eq("freelancer_id", user_id) \
+            .eq("status", "accepted") \
+            .execute()
+
+        accepted_project_ids = [app["project_id"] for app in resp.data or []]
+
+        # Step 2: Count only projects that are still active
+        if accepted_project_ids:
+            resp = supabase.table("projects") \
+                .select("id") \
+                .in_("id", accepted_project_ids) \
+                .eq("status", "In Progress") \
+                .execute()
+            stats["Active Projects"] = len(resp.data or [])
+        else:
+            stats["Active Projects"] = 0
+
+
+        # Completed tasks
+        resp = supabase.table("tasks").select("id").eq("assignee_id", user_id).eq("status", "completed").execute()
+        stats["Completed Tasks"] = len(resp.data or [])
+
+        # Earnings
+        resp = supabase.table("payments").select("amount").eq("freelancer_id", user_id).execute()
+        if resp.data:
+            stats["Earnings ($)"] = sum(p["amount"] for p in resp.data if p.get("amount"))
+
+        # Unread messages
+        resp = supabase.table("messages").select("id").eq("receiver_id", user_id).eq("is_read", False).execute()
+        stats["Unread Messages"] = len(resp.data or [])
+
+        # Rating
+        resp = supabase.table("profiles").select("rating").eq("id", user_id).single().execute()
+        if resp.data and resp.data.get("rating"):
+            stats["Rating"] = f"{resp.data['rating']} ⭐"
+
+    except Exception:
+        logging.exception("Error fetching stats")
 
     for idx, (key, value) in enumerate(stats.items()):
         stat_box = tk.Frame(stats_frame, bg="white", bd=2, relief="groove", padx=20, pady=15)
         stat_box.grid(row=0, column=idx, padx=10, sticky="nsew")
 
-        tk.Label(stat_box, text=key, font=("Helvetica", 12, "bold"), fg="#34495e", bg="white").pack()
-        tk.Label(stat_box, text=str(value), font=("Helvetica", 14), fg="#27ae60", bg="white").pack()
+        tk.Label(stat_box, text=key, font=("Helvetica", 12, "bold"),
+                 fg="#34495e", bg="white").pack()
+        tk.Label(stat_box, text=str(value), font=("Helvetica", 14),
+                 fg="#27ae60", bg="white").pack()
 
     for i in range(len(stats)):
         stats_frame.grid_columnconfigure(i, weight=1)
 
-    # === RECENT ACTIVITY ===
-    activity_frame = tk.Frame(content_frame, bg="white", bd=2, relief="groove")
-    activity_frame.pack(fill="both", expand=True, padx=20, pady=(10, 20))
+    # === MAIN BOTTOM SPLIT (Recent Activity | Advertised Projects) ===
+    bottom_frame = tk.Frame(content_frame, bg="#ecf0f1")
+    bottom_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+    bottom_frame.grid_rowconfigure(0, weight=1)   # ✅ allow row to expand
+    bottom_frame.grid_columnconfigure(0, weight=1)
+    bottom_frame.grid_columnconfigure(1, weight=1)
 
-    tk.Label(
-        activity_frame, text="🕒 Recent Activity",
-        font=("Helvetica", 14, "bold"),
-        bg="white", fg="#2c3e50"
-    ).pack(anchor="w", padx=15, pady=10)
+    # --- Scrollable Section Factory ---
+    def make_scrollable_section(parent, title, height=300):
+        outer = tk.Frame(parent, bg="white", bd=2, relief="groove", height=height)
+        outer.grid_propagate(False)  # ✅ allow fixed height
+        outer.pack_propagate(False)
 
-    activities = [
-        f"Completed task 'UI Fix' in Project Alpha ({datetime.now().strftime('%H:%M')})",
-        f"Received message from Client X ({datetime.now().strftime('%H:%M')})",
-        f"Updated profile bio ({datetime.now().strftime('%H:%M')})",
-        f"Added new skill: Python ({datetime.now().strftime('%H:%M')})",
-    ]
-
-    for act in activities:
         tk.Label(
-            activity_frame, text="• " + act,
-            font=("Helvetica", 11), bg="white", anchor="w", justify="left"
-        ).pack(fill="x", padx=20, pady=2)
+            outer, text=title,
+            font=("Helvetica", 14, "bold"),
+            bg="white", fg="#2c3e50"
+        ).pack(anchor="w", padx=15, pady=10)
 
-    # === QUICK ACTIONS ===
-    actions_frame = tk.Frame(content_frame, bg="#ecf0f1")
-    actions_frame.pack(fill="x", pady=(0, 20), padx=20)
+        container = tk.Frame(outer, bg="white")
+        container.pack(fill="both", expand=True, padx=10, pady=5)
 
-    tk.Label(
-        actions_frame, text="⚡ Quick Actions",
-        font=("Helvetica", 14, "bold"),
-        bg="#ecf0f1", fg="#2c3e50"
-    ).pack(anchor="w", pady=(10, 5))
+        canvas = tk.Canvas(container, bg="white", highlightthickness=0)
+        scrollbar = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        scroll_frame = tk.Frame(canvas, bg="white")
 
-    buttons_frame = tk.Frame(actions_frame, bg="#ecf0f1")
-    buttons_frame.pack(fill="x", padx=10)
+        scroll_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
 
-    quick_actions = ["Create Project", "View Messages", "Update Profile", "Check Earnings"]
-    for action in quick_actions:
-        tk.Button(
-            buttons_frame, text=action,
-            bg="#2980b9", fg="white", font=("Helvetica", 11, "bold"),
-            relief="flat", padx=15, pady=8
-        ).pack(side="left", padx=10, pady=10)
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
 
-    # === SUGGESTED PROJECTS ===
-    projects_frame = tk.Frame(content_frame, bg="white", bd=2, relief="groove")
-    projects_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
-    tk.Label(
-        projects_frame, text="🤖 Suggested Projects for You",
-        font=("Helvetica", 14, "bold"),
-        bg="white", fg="#2c3e50"
-    ).pack(anchor="w", padx=15, pady=10)
+        return outer, scroll_frame
+
+    # === RECENT ACTIVITY (left) ===
+    activity_frame, activity_scroll = make_scrollable_section(bottom_frame, "🕒 Recent Activity")
+    activity_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=5)
+
+    # === ADVERTISED PROJECTS (right) ===
+    projects_frame, projects_scroll = make_scrollable_section(bottom_frame, "📢 Advertised Projects")
+    projects_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=5)
+
 
     loading_label = tk.Label(
-        projects_frame, text="Loading AI suggestions...",
+        projects_scroll, text="Loading available projects...",
         font=("Helvetica", 11, "italic"), bg="white", fg="#7f8c8d"
     )
     loading_label.pack(pady=10)
 
     def load_projects():
-        if not projects_frame.winfo_exists():
-            return
+        try:
+            response = supabase.table("projects").select("*").eq("status", "Not Started").order("created_at", desc=True).execute()
+            projects = response.data or []
 
-        loading_label.destroy()
+            if not projects:
+                loading_label.config(text="No advertised projects right now.")
+                return
 
-        all_projects = [
-            {"title": "Build a Django REST API", "budget": "$500", "tags": ["Python", "API"]},
-            {"title": "Design a Portfolio Website", "budget": "$300", "tags": ["HTML", "CSS", "UI"]},
-            {"title": "Machine Learning Model for Sales Prediction", "budget": "$800", "tags": ["AI", "ML", "Python"]},
-            {"title": "React Dashboard for Analytics", "budget": "$600", "tags": ["React", "Frontend"]},
-        ]
+            loading_label.destroy()
 
-        suggested = [p for p in all_projects if "Python" in p["tags"] or "AI" in p["tags"]]
+            for proj in projects:
+                proj_box = tk.Frame(projects_scroll, bg="#ecf0f1", bd=1, relief="solid", padx=15, pady=10)
+                proj_box.pack(fill="x", padx=15, pady=5)
 
-        for proj in suggested:
-            proj_box = tk.Frame(projects_frame, bg="#ecf0f1", bd=1, relief="solid", padx=15, pady=10)
-            proj_box.pack(fill="x", padx=15, pady=5)
+                tk.Label(proj_box, text=proj.get("name", "Untitled"),
+                         font=("Helvetica", 12, "bold"), bg="#ecf0f1", fg="#2c3e50").pack(anchor="w")
+                tk.Label(proj_box, text=f"Budget: ${proj.get('budget', 'N/A')}",
+                         font=("Helvetica", 10), bg="#ecf0f1", fg="#27ae60").pack(anchor="w", pady=2)
+                tk.Label(proj_box, text=f"Description: {proj.get('description', 'No description')}",
+                         font=("Helvetica", 10), bg="#ecf0f1", fg="#34495e", wraplength=350, justify="left").pack(anchor="w", pady=2)
 
-            tk.Label(proj_box, text=proj["title"], font=("Helvetica", 12, "bold"), bg="#ecf0f1", fg="#2c3e50").pack(anchor="w")
-            tk.Label(proj_box, text=f"Budget: {proj['budget']}", font=("Helvetica", 10), bg="#ecf0f1", fg="#27ae60").pack(anchor="w", pady=2)
-            tk.Label(proj_box, text="Tags: " + ", ".join(proj["tags"]), font=("Helvetica", 9), bg="#ecf0f1", fg="#7f8c8d").pack(anchor="w")
+                tags = proj.get("tags", [])
+                if tags:
+                    tk.Label(proj_box, text="Tags: " + ", ".join(tags),
+                             font=("Helvetica", 9), bg="#ecf0f1", fg="#7f8c8d").pack(anchor="w")
 
-            tk.Button(
-                proj_box, text="Apply",
-                bg="#2980b9", fg="white", font=("Helvetica", 10, "bold"),
-                relief="flat", padx=10, pady=5
-            ).pack(anchor="e", pady=5)
+                def apply_to_project(project_id=proj["id"]):
+                    try:
+                        supabase.table("applications").insert({
+                            "project_id": project_id,
+                            "freelancer_id": user_id
+                        }).execute()
+                        logging.info(f"User {user_id} applied to project {project_id}")
+                        tk.Label(proj_box, text="✅ Applied!",
+                                 font=("Helvetica", 10, "bold"),
+                                 bg="#ecf0f1", fg="green").pack(anchor="e")
+                    except Exception as e:
+                        logging.exception("Error applying to project")
+                        tk.Label(proj_box, text=f"❌ Error: {e}",
+                                 font=("Helvetica", 10),
+                                 bg="#ecf0f1", fg="red").pack(anchor="e")
 
-    # 🔧 Fix: wrap in lambda so args aren’t required
-    content_frame.after(1500, lambda: load_projects())
+                tk.Button(proj_box, text="Apply",
+                          bg="#2980b9", fg="white",
+                          font=("Helvetica", 10, "bold"),
+                          relief="flat", padx=10, pady=5,
+                          command=apply_to_project).pack(anchor="e", pady=5)
+
+        except Exception as e:
+            logging.exception("Error loading advertised projects")
+            loading_label.config(text=f"❌ Error loading projects: {e}", fg="red")
+
+    content_frame.after(500, load_projects)

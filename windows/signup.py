@@ -1,8 +1,10 @@
+# windows/signup.py
 import tkinter as tk
 from tkinter import messagebox
 import logging
+from db import supabase
 
-def signup_window(root, supabase):
+def signup_window(root):
     root.withdraw()  # hide root
 
     win = tk.Toplevel(root)
@@ -36,14 +38,17 @@ def signup_window(root, supabase):
             logging.debug(f"Signup response: {user}")
 
             if user and user.user:
-                supabase.table("profiles").insert({
-                    "id": user.user.id,
-                    "name": name,
-                    "skills": []
-                }).execute()
+                try:
+                    supabase.table("profiles").insert({
+                        "id": user.user.id,
+                        "name": name,
+                        "skills": []
+                    }).execute()
+                except Exception as db_err:
+                    logging.warning(f"Profile insert failed: {db_err}")
                 messagebox.showinfo("Signup", "Account created successfully!")
                 win.destroy()
-                root.deiconify()  # back to landing
+                root.deiconify()
             else:
                 messagebox.showerror("Signup", "Signup failed.")
         except Exception as e:

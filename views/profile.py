@@ -1,7 +1,9 @@
+# views/profile.py
 import tkinter as tk
 import logging
+from db import supabase  # ✅ use global client
 
-def profile_view(content_frame, user_email, supabase, user_id):
+def profile_view(content_frame, user_email, user_id):
     # Clear content frame
     for widget in content_frame.winfo_children():
         widget.destroy()
@@ -144,7 +146,7 @@ def profile_view(content_frame, user_email, supabase, user_id):
                         supabase.table("profiles").update(updated_data).eq("id", user_id).execute()
                         logging.info("Profile updated successfully")
                         status_label.config(text="✅ Profile updated successfully!", fg="green")
-                        profile_view(content_frame, user_email, supabase, user_id)
+                        profile_view(content_frame, user_email, user_id)  # ✅ removed supabase arg
                     except Exception as e:
                         logging.exception("Error updating profile")
                         status_label.config(text=f"❌ Error: {e}", fg="red")

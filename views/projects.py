@@ -1,7 +1,10 @@
+# views/projects.py
 import tkinter as tk
 import logging
+from db import supabase  # global client
 
-def projects_view(content_frame, supabase, user_id):
+def projects_view(content_frame, user_id):
+    # Clear frame
     for widget in content_frame.winfo_children():
         widget.destroy()
 
