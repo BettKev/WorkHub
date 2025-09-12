@@ -42,7 +42,7 @@ WorkHub is a freelancer platform desktop application built with Python, Tkinter,
 ### 1. Clone the Repository
 
 ```sh
-git clone https://github.com/yourusername/workhub.git
+git clone https://github.com/BettKev/WorkHub
 cd workhub
 ```
 
@@ -95,6 +95,8 @@ python3 app.py
 - **Projects:** View all projects from Supabase.
 - **Profile:** View and edit freelancer profile, including skills and bio.
 - **Settings:** (Coming soon)
+
+-Note: use the following test credentials to test the application (email: testuser1@gmail.com, password: 123456)
 
 ---
 
