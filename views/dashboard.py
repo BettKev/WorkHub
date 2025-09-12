@@ -51,8 +51,34 @@ def dashboard_view(content_frame, user_id, user_email=None):
 
 
         # Completed tasks
-        resp = supabase.table("tasks").select("id").eq("assignee_id", user_id).eq("status", "completed").execute()
-        stats["Completed Tasks"] = len(resp.data or [])
+        try:
+            # Step 1: get all project_ids where freelancer has an accepted application
+            apps_resp = (
+                supabase.table("applications")
+                .select("project_id")
+                .eq("freelancer_id", user_id)
+                .eq("status", "accepted")
+                .execute()
+            )
+            project_ids = [app["project_id"] for app in (apps_resp.data or [])]
+
+            completed_count = 0
+            if project_ids:
+                # Step 2: get completed tasks for those projects
+                tasks_resp = (
+                    supabase.table("tasks")
+                    .select("id")
+                    .in_("project_id", project_ids)
+                    .eq("status", "done")
+                    .execute()
+                )
+                completed_count = len(tasks_resp.data or [])
+
+            stats["Completed Tasks"] = completed_count
+
+        except Exception:
+            logging.exception("Error fetching completed tasks")
+
 
         # Earnings
         resp = supabase.table("payments").select("amount").eq("freelancer_id", user_id).execute()
