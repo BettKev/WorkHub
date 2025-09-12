@@ -49,82 +49,55 @@ def dashboard_view(content_frame, user_id, user_email=None):
         else:
             stats["Active Projects"] = 0
 
-
         # Completed tasks
         try:
-            # Step 1: get all project_ids where freelancer has an accepted application
-            apps_resp = (
-                supabase.table("applications")
-                .select("project_id")
-                .eq("freelancer_id", user_id)
-                .eq("status", "accepted")
-                .execute()
-            )
-            project_ids = [app["project_id"] for app in (apps_resp.data or [])]
-
             completed_count = 0
-            if project_ids:
-                # Step 2: get completed tasks for those projects
+            if accepted_project_ids:
                 tasks_resp = (
                     supabase.table("tasks")
                     .select("id")
-                    .in_("project_id", project_ids)
+                    .in_("project_id", accepted_project_ids)
                     .eq("status", "done")
                     .execute()
                 )
                 completed_count = len(tasks_resp.data or [])
-
             stats["Completed Tasks"] = completed_count
-
         except Exception:
             logging.exception("Error fetching completed tasks")
 
-
         # Earnings
         try:
-            # Step 1: get all project_ids where freelancer has an accepted application
-            apps_resp = (
-                supabase.table("applications")
-                .select("project_id")
-                .eq("freelancer_id", user_id)
-                .eq("status", "accepted")
-                .execute()
-            )
-            project_ids = [str(app["project_id"]) for app in (apps_resp.data or [])]
-
             total_earnings = 0
-            if project_ids:
-                # Step 2: sum earnings from transactions/payments for those projects
+            if accepted_project_ids:
                 tx_resp = (
                     supabase.table("transactions")
                     .select("amount, type, project_id")
-                    .in_("project_id", project_ids)
-                    .eq("type", "credit")   # ✅ only credits count as earnings
+                    .in_("project_id", [str(pid) for pid in accepted_project_ids])
+                    .eq("type", "credit")
                     .execute()
                 )
-
                 total_earnings = sum(
                     t.get("amount", 0) for t in (tx_resp.data or []) if t.get("amount")
                 )
-
             stats["Earnings ($)"] = total_earnings
-
         except Exception:
             logging.exception("Error fetching earnings")
 
-
         # Unread messages
-        resp = supabase.table("messages").select("id").eq("receiver_id", user_id).eq("is_read", False).execute()
+        resp = supabase.table("messages").select("id") \
+            .eq("receiver_id", user_id).eq("is_read", False).execute()
         stats["Unread Messages"] = len(resp.data or [])
 
         # Rating
-        resp = supabase.table("profiles").select("rating").eq("id", user_id).single().execute()
+        resp = supabase.table("profiles").select("rating") \
+            .eq("id", user_id).single().execute()
         if resp.data and resp.data.get("rating"):
             stats["Rating"] = f"{resp.data['rating']} ⭐"
 
     except Exception:
         logging.exception("Error fetching stats")
 
+    # render stats
     for idx, (key, value) in enumerate(stats.items()):
         stat_box = tk.Frame(stats_frame, bg="white", bd=2, relief="groove", padx=20, pady=15)
         stat_box.grid(row=0, column=idx, padx=10, sticky="nsew")
@@ -140,14 +113,14 @@ def dashboard_view(content_frame, user_id, user_email=None):
     # === MAIN BOTTOM SPLIT (Recent Activity | Advertised Projects) ===
     bottom_frame = tk.Frame(content_frame, bg="#ecf0f1")
     bottom_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
-    bottom_frame.grid_rowconfigure(0, weight=1)   # ✅ allow row to expand
+    bottom_frame.grid_rowconfigure(0, weight=1)
     bottom_frame.grid_columnconfigure(0, weight=1)
     bottom_frame.grid_columnconfigure(1, weight=1)
 
     # --- Scrollable Section Factory ---
     def make_scrollable_section(parent, title, height=300):
         outer = tk.Frame(parent, bg="white", bd=2, relief="groove", height=height)
-        outer.grid_propagate(False)  # ✅ allow fixed height
+        outer.grid_propagate(False)
         outer.pack_propagate(False)
 
         tk.Label(
@@ -184,7 +157,63 @@ def dashboard_view(content_frame, user_id, user_email=None):
     projects_frame, projects_scroll = make_scrollable_section(bottom_frame, "📢 Advertised Projects")
     projects_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=5)
 
+    # === LOAD RECENT ACTIVITY ===
+    def load_activity():
+        try:
+            if not accepted_project_ids:
+                tk.Label(activity_scroll, text="No recent activity.",
+                         font=("Helvetica", 11, "italic"),
+                         bg="white", fg="#7f8c8d").pack(pady=10)
+                return
 
+            tasks_resp = (
+                supabase.table("tasks")
+                .select("id, title, status, project_id, created_at")
+                .in_("project_id", accepted_project_ids)
+                .order("created_at", desc=True)
+                .limit(30)
+                .execute()
+            )
+            tasks = tasks_resp.data or []
+
+            if not tasks:
+                tk.Label(activity_scroll, text="No recent tasks.",
+                         font=("Helvetica", 11, "italic"),
+                         bg="white", fg="#7f8c8d").pack(pady=10)
+                return
+
+            # status color map
+            status_colors = {
+                "done": "#27ae60",       # green
+                "in progress": "#e67e22",# orange
+                "not started": "#7f8c8d" # gray
+            }
+
+            for t in tasks:
+                task_box = tk.Frame(activity_scroll, bg="#f9f9f9", bd=1, relief="solid", padx=10, pady=5)
+                task_box.pack(fill="x", padx=10, pady=4)
+
+                title = t.get("title", "Untitled Task")
+                status = (t.get("status") or "").lower()
+                created = t.get("created_at", "")
+
+                tk.Label(task_box,
+                         text=f"📝 {title}",
+                         font=("Helvetica", 10, "bold"),
+                         bg="#f9f9f9", fg="#2c3e50",
+                         wraplength=350, justify="left").pack(anchor="w")
+
+                color = status_colors.get(status, "#34495e")
+                tk.Label(task_box,
+                         text=f"Status: {status.title()} | {created}",
+                         font=("Helvetica", 9, "italic"),
+                         bg="#f9f9f9", fg=color).pack(anchor="e")
+        except Exception:
+            logging.exception("Error loading recent activity")
+            tk.Label(activity_scroll, text="❌ Error loading activity.",
+                     font=("Helvetica", 11), fg="red", bg="white").pack(pady=10)
+
+    # === LOAD PROJECTS ===
     loading_label = tk.Label(
         projects_scroll, text="Loading available projects...",
         font=("Helvetica", 11, "italic"), bg="white", fg="#7f8c8d"
@@ -193,7 +222,11 @@ def dashboard_view(content_frame, user_id, user_email=None):
 
     def load_projects():
         try:
-            response = supabase.table("projects").select("*").eq("status", "Not Started").order("created_at", desc=True).execute()
+            response = supabase.table("projects") \
+                .select("*") \
+                .eq("status", "Not Started") \
+                .order("created_at", desc=True) \
+                .execute()
             projects = response.data or []
 
             if not projects:
@@ -211,7 +244,8 @@ def dashboard_view(content_frame, user_id, user_email=None):
                 tk.Label(proj_box, text=f"Budget: ${proj.get('budget', 'N/A')}",
                          font=("Helvetica", 10), bg="#ecf0f1", fg="#27ae60").pack(anchor="w", pady=2)
                 tk.Label(proj_box, text=f"Description: {proj.get('description', 'No description')}",
-                         font=("Helvetica", 10), bg="#ecf0f1", fg="#34495e", wraplength=350, justify="left").pack(anchor="w", pady=2)
+                         font=("Helvetica", 10), bg="#ecf0f1", fg="#34495e",
+                         wraplength=350, justify="left").pack(anchor="w", pady=2)
 
                 tags = proj.get("tags", [])
                 if tags:
@@ -244,4 +278,6 @@ def dashboard_view(content_frame, user_id, user_email=None):
             logging.exception("Error loading advertised projects")
             loading_label.config(text=f"❌ Error loading projects: {e}", fg="red")
 
+    # schedule loaders
+    content_frame.after(500, load_activity)
     content_frame.after(500, load_projects)
