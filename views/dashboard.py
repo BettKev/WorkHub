@@ -1,24 +1,20 @@
 # views/dashboard.py
 import tkinter as tk
 import logging
-from db import supabase
-import requests  # for Gemini API calls (stub for now)
 import threading
+from db import supabase
+from ai.agent import AIAgent
+import os
+from dotenv import load_dotenv
 
-# =====================
-# Gemini API Stub
-# =====================
-def query_gemini(prompt: str) -> str:
-    """
-    Replace this stub with actual Gemini API call.
-    Right now, just echoes back for testing.
-    """
-    try:
-        # Example placeholder (replace with real Gemini request)
-        return f"🤖 Gemini says: I received your message -> '{prompt}'"
-    except Exception as e:
-        logging.exception("Gemini API call failed")
-        return f"❌ Error: {e}"
+load_dotenv()
+api_key = os.getenv("GOOGLE_API_KEY")
+if not api_key:
+    logging.warning("GOOGLE_API_KEY not set in .env, using stub responses for AI agent.")
+    api_key = None
+
+# Initialize AI agent (replace with real key in production)
+agent = AIAgent(api_key)
 
 
 def dashboard_view(content_frame, user_id, user_email=None):
@@ -47,7 +43,7 @@ def dashboard_view(content_frame, user_id, user_email=None):
     }
 
     try:
-        # Step 1: Get project IDs where user has an accepted application
+        # Step 1: Projects user is accepted in
         resp = supabase.table("applications") \
             .select("project_id") \
             .eq("freelancer_id", user_id) \
@@ -56,7 +52,7 @@ def dashboard_view(content_frame, user_id, user_email=None):
 
         accepted_project_ids = [app["project_id"] for app in resp.data or []]
 
-        # Step 2: Count only projects that are still active
+        # Step 2: Active projects
         if accepted_project_ids:
             resp = supabase.table("projects") \
                 .select("id") \
@@ -64,42 +60,30 @@ def dashboard_view(content_frame, user_id, user_email=None):
                 .eq("status", "In Progress") \
                 .execute()
             stats["Active Projects"] = len(resp.data or [])
-        else:
-            stats["Active Projects"] = 0
 
         # Completed tasks
-        try:
-            completed_count = 0
-            if accepted_project_ids:
-                tasks_resp = (
-                    supabase.table("tasks")
-                    .select("id")
-                    .in_("project_id", accepted_project_ids)
-                    .eq("status", "done")
-                    .execute()
-                )
-                completed_count = len(tasks_resp.data or [])
-            stats["Completed Tasks"] = completed_count
-        except Exception:
-            logging.exception("Error fetching completed tasks")
+        if accepted_project_ids:
+            tasks_resp = (
+                supabase.table("tasks")
+                .select("id")
+                .in_("project_id", accepted_project_ids)
+                .eq("status", "done")
+                .execute()
+            )
+            stats["Completed Tasks"] = len(tasks_resp.data or [])
 
         # Earnings
-        try:
-            total_earnings = 0
-            if accepted_project_ids:
-                tx_resp = (
-                    supabase.table("transactions")
-                    .select("amount, type, project_id")
-                    .in_("project_id", [str(pid) for pid in accepted_project_ids])
-                    .eq("type", "credit")
-                    .execute()
-                )
-                total_earnings = sum(
-                    t.get("amount", 0) for t in (tx_resp.data or []) if t.get("amount")
-                )
-            stats["Earnings ($)"] = total_earnings
-        except Exception:
-            logging.exception("Error fetching earnings")
+        if accepted_project_ids:
+            tx_resp = (
+                supabase.table("transactions")
+                .select("amount, type, project_id")
+                .in_("project_id", accepted_project_ids)
+                .eq("type", "credit")
+                .execute()
+            )
+            stats["Earnings ($)"] = sum(
+                t.get("amount", 0) for t in (tx_resp.data or []) if t.get("amount")
+            )
 
         # Unread messages
         resp = supabase.table("messages").select("id") \
@@ -115,7 +99,7 @@ def dashboard_view(content_frame, user_id, user_email=None):
     except Exception:
         logging.exception("Error fetching stats")
 
-    # render stats
+    # Render stats
     for idx, (key, value) in enumerate(stats.items()):
         stat_box = tk.Frame(stats_frame, bg="white", bd=2, relief="groove", padx=20, pady=15)
         stat_box.grid(row=0, column=idx, padx=10, sticky="nsew")
@@ -167,15 +151,16 @@ def dashboard_view(content_frame, user_id, user_email=None):
 
         return outer, scroll_frame
 
-    # === RECENT ACTIVITY (left) ===
+    # === RECENT ACTIVITY ===
     activity_frame, activity_scroll = make_scrollable_section(bottom_frame, "🕒 Recent Activity")
     activity_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=5)
 
-    # === ADVERTISED PROJECTS (right) ===
+    # === ADVERTISED PROJECTS ===
     projects_frame, projects_scroll = make_scrollable_section(bottom_frame, "📢 Advertised Projects")
     projects_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=5)
 
-    # === FLOATING AI ASSISTANT BUTTON ===
+    # === FLOATING AI ASSISTANT ===
+        # === FLOATING AI ASSISTANT ===
     def open_ai_popup():
         popup = tk.Toplevel(content_frame)
         popup.title("🤖 AI Assistant")
@@ -188,34 +173,48 @@ def dashboard_view(content_frame, user_id, user_email=None):
             bg="white", fg="#2c3e50"
         ).pack(anchor="w", padx=15, pady=10)
 
-        chat_display = tk.Text(
-            popup, wrap="word", state="disabled",
-            bg="#f9f9f9", fg="#2c3e50"
-        )
-        chat_display.pack(fill="both", expand=True, padx=10, pady=(0, 5))
+        # Frame to hold chat + input
+        main_frame = tk.Frame(popup, bg="white")
+        main_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
-        input_frame = tk.Frame(popup, bg="white")
-        input_frame.pack(fill="x", padx=10, pady=5)
+        # Chat display
+        chat_display = tk.Text(
+            main_frame, wrap="word", state="disabled",
+            bg="#f9f9f9", fg="#2c3e50", height=20
+        )
+        chat_display.pack(fill="both", expand=True, side="top")
+
+        # Input area
+        input_frame = tk.Frame(main_frame, bg="white")
+        input_frame.pack(fill="x", side="bottom", pady=5)
 
         user_input = tk.Entry(input_frame, font=("Helvetica", 10))
         user_input.pack(side="left", fill="x", expand=True, padx=(0, 5))
 
-        def send_message():
+        def send_message(event=None):
             msg = user_input.get().strip()
             if not msg:
                 return
             user_input.delete(0, tk.END)
 
-            # Show user msg
+            # Show user message
             chat_display.config(state="normal")
             chat_display.insert(tk.END, f"👤 You: {msg}\n")
+            # Insert temporary "thinking..." placeholder
+            chat_display.insert(tk.END, "🤖 AI: thinking...\n")
             chat_display.config(state="disabled")
             chat_display.see(tk.END)
 
+            # Remember where "thinking..." starts
+            thinking_index = chat_display.index("end-2l linestart")
+
             def fetch_response():
-                reply = query_gemini(msg)
+                reply = agent.query_gemini(msg)
+
                 chat_display.config(state="normal")
-                chat_display.insert(tk.END, f"{reply}\n\n")
+                # Delete "thinking..." line and replace with real response
+                chat_display.delete(thinking_index, f"{thinking_index} lineend+1c")
+                chat_display.insert(tk.END, f"🤖 AI: {reply}\n\n")
                 chat_display.config(state="disabled")
                 chat_display.see(tk.END)
 
@@ -224,10 +223,12 @@ def dashboard_view(content_frame, user_id, user_email=None):
         tk.Button(
             input_frame, text="Send", command=send_message,
             bg="#2980b9", fg="white",
-            font=("Helvetica", 10, "bold")
+            font=("Helvetica", 10, "bold"),
+            relief="flat", padx=12, pady=5
         ).pack(side="right")
 
-    # Floating button (bottom-right)
+        user_input.bind("<Return>", send_message)
+
     float_btn = tk.Button(
         content_frame, text="💬", command=open_ai_popup,
         bg="#2980b9", fg="white",
@@ -261,11 +262,10 @@ def dashboard_view(content_frame, user_id, user_email=None):
                          bg="white", fg="#7f8c8d").pack(pady=10)
                 return
 
-            # status color map
             status_colors = {
-                "done": "#27ae60",       # green
-                "in progress": "#e67e22",# orange
-                "not started": "#7f8c8d" # gray
+                "done": "#27ae60",
+                "in progress": "#e67e22",
+                "not started": "#7f8c8d"
             }
 
             for t in tasks:
@@ -292,7 +292,7 @@ def dashboard_view(content_frame, user_id, user_email=None):
             tk.Label(activity_scroll, text="❌ Error loading activity.",
                      font=("Helvetica", 11), fg="red", bg="white").pack(pady=10)
 
-    # === LOAD PROJECTS ===
+    # === LOAD ADVERTISED PROJECTS ===
     loading_label = tk.Label(
         projects_scroll, text="Loading available projects...",
         font=("Helvetica", 11, "italic"), bg="white", fg="#7f8c8d"
@@ -357,6 +357,6 @@ def dashboard_view(content_frame, user_id, user_email=None):
             logging.exception("Error loading advertised projects")
             loading_label.config(text=f"❌ Error loading projects: {e}", fg="red")
 
-    # schedule loaders
+    # Schedule loaders
     content_frame.after(500, load_activity)
     content_frame.after(500, load_projects)
