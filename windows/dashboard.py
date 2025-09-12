@@ -49,7 +49,7 @@ def open_dashboard(root, user_email, user_id, supabase):
     # Navigation
     nav_items = [
         ("🏠 Dashboard", lambda: dashboard_view(content_frame)),
-        ("📂 Projects", lambda: projects_view(content_frame, supabase)),
+        ("📂 Projects", lambda: projects_view(content_frame, supabase, user_id)),
         ("👤 Profile", lambda: profile_view(content_frame, user_email, user_id, supabase)),
         ("⚙️ Settings", lambda: settings_view(content_frame)),
     ]
