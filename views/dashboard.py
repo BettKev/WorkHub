@@ -81,9 +81,37 @@ def dashboard_view(content_frame, user_id, user_email=None):
 
 
         # Earnings
-        resp = supabase.table("payments").select("amount").eq("freelancer_id", user_id).execute()
-        if resp.data:
-            stats["Earnings ($)"] = sum(p["amount"] for p in resp.data if p.get("amount"))
+        try:
+            # Step 1: get all project_ids where freelancer has an accepted application
+            apps_resp = (
+                supabase.table("applications")
+                .select("project_id")
+                .eq("freelancer_id", user_id)
+                .eq("status", "accepted")
+                .execute()
+            )
+            project_ids = [str(app["project_id"]) for app in (apps_resp.data or [])]
+
+            total_earnings = 0
+            if project_ids:
+                # Step 2: sum earnings from transactions/payments for those projects
+                tx_resp = (
+                    supabase.table("transactions")
+                    .select("amount, type, project_id")
+                    .in_("project_id", project_ids)
+                    .eq("type", "credit")   # ✅ only credits count as earnings
+                    .execute()
+                )
+
+                total_earnings = sum(
+                    t.get("amount", 0) for t in (tx_resp.data or []) if t.get("amount")
+                )
+
+            stats["Earnings ($)"] = total_earnings
+
+        except Exception:
+            logging.exception("Error fetching earnings")
+
 
         # Unread messages
         resp = supabase.table("messages").select("id").eq("receiver_id", user_id).eq("is_read", False).execute()
