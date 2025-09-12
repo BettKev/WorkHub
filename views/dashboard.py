@@ -2,6 +2,24 @@
 import tkinter as tk
 import logging
 from db import supabase
+import requests  # for Gemini API calls (stub for now)
+import threading
+
+# =====================
+# Gemini API Stub
+# =====================
+def query_gemini(prompt: str) -> str:
+    """
+    Replace this stub with actual Gemini API call.
+    Right now, just echoes back for testing.
+    """
+    try:
+        # Example placeholder (replace with real Gemini request)
+        return f"🤖 Gemini says: I received your message -> '{prompt}'"
+    except Exception as e:
+        logging.exception("Gemini API call failed")
+        return f"❌ Error: {e}"
+
 
 def dashboard_view(content_frame, user_id, user_email=None):
     for widget in content_frame.winfo_children():
@@ -156,6 +174,67 @@ def dashboard_view(content_frame, user_id, user_email=None):
     # === ADVERTISED PROJECTS (right) ===
     projects_frame, projects_scroll = make_scrollable_section(bottom_frame, "📢 Advertised Projects")
     projects_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=5)
+
+    # === FLOATING AI ASSISTANT BUTTON ===
+    def open_ai_popup():
+        popup = tk.Toplevel(content_frame)
+        popup.title("🤖 AI Assistant")
+        popup.geometry("400x500")
+        popup.configure(bg="white")
+
+        tk.Label(
+            popup, text="🤖 AI Assistant",
+            font=("Helvetica", 14, "bold"),
+            bg="white", fg="#2c3e50"
+        ).pack(anchor="w", padx=15, pady=10)
+
+        chat_display = tk.Text(
+            popup, wrap="word", state="disabled",
+            bg="#f9f9f9", fg="#2c3e50"
+        )
+        chat_display.pack(fill="both", expand=True, padx=10, pady=(0, 5))
+
+        input_frame = tk.Frame(popup, bg="white")
+        input_frame.pack(fill="x", padx=10, pady=5)
+
+        user_input = tk.Entry(input_frame, font=("Helvetica", 10))
+        user_input.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        def send_message():
+            msg = user_input.get().strip()
+            if not msg:
+                return
+            user_input.delete(0, tk.END)
+
+            # Show user msg
+            chat_display.config(state="normal")
+            chat_display.insert(tk.END, f"👤 You: {msg}\n")
+            chat_display.config(state="disabled")
+            chat_display.see(tk.END)
+
+            def fetch_response():
+                reply = query_gemini(msg)
+                chat_display.config(state="normal")
+                chat_display.insert(tk.END, f"{reply}\n\n")
+                chat_display.config(state="disabled")
+                chat_display.see(tk.END)
+
+            threading.Thread(target=fetch_response, daemon=True).start()
+
+        tk.Button(
+            input_frame, text="Send", command=send_message,
+            bg="#2980b9", fg="white",
+            font=("Helvetica", 10, "bold")
+        ).pack(side="right")
+
+    # Floating button (bottom-right)
+    float_btn = tk.Button(
+        content_frame, text="💬", command=open_ai_popup,
+        bg="#2980b9", fg="white",
+        font=("Helvetica", 16, "bold"),
+        bd=0, relief="flat", width=3, height=1
+    )
+    float_btn.place(relx=0.95, rely=0.9, anchor="center")
 
     # === LOAD RECENT ACTIVITY ===
     def load_activity():
