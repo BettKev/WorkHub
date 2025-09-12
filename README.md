@@ -96,7 +96,7 @@ python3 app.py
 - **Profile:** View and edit freelancer profile, including skills and bio.
 - **Settings:** (Coming soon)
 
--Note: use the following test credentials to test the application (email: testuser1@gmail.com, password: 123456)
+- Note: Use the following test credentials to test the application (email: testuser1@gmail.com, password: 123456). The backend is deployed in supabase and after sometime the project is paused which may cause the application to delay for up to 50 seconds when you first try to call the backend resources.
 
 ---
 
