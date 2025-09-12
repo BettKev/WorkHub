@@ -8,12 +8,12 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-api_key = os.getenv("GOOGLE_API_KEY") or "AIzaSyB__1QK2C5QK3zGlztS2GSXI8P4t6L1cAg"
+api_key = os.getenv("GOOGLE_API_KEY")
 if not api_key:
     logging.warning("GOOGLE_API_KEY not set in .env, using stub responses for AI agent.")
     api_key = None
 
-# Initialize AI agent (replace with real key in production)
+# Initialize AI agent
 agent = AIAgent(api_key)
 
 
@@ -112,14 +112,13 @@ def dashboard_view(content_frame, user_id, user_email=None):
     for i in range(len(stats)):
         stats_frame.grid_columnconfigure(i, weight=1)
 
-    # === MAIN BOTTOM SPLIT (Recent Activity | Advertised Projects) ===
+    # === MAIN BOTTOM SPLIT ===
     bottom_frame = tk.Frame(content_frame, bg="#ecf0f1")
     bottom_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
     bottom_frame.grid_rowconfigure(0, weight=1)
     bottom_frame.grid_columnconfigure(0, weight=1)
     bottom_frame.grid_columnconfigure(1, weight=1)
 
-    # --- Scrollable Section Factory ---
     def make_scrollable_section(parent, title, height=300):
         outer = tk.Frame(parent, bg="white", bd=2, relief="groove", height=height)
         outer.grid_propagate(False)
@@ -159,8 +158,7 @@ def dashboard_view(content_frame, user_id, user_email=None):
     projects_frame, projects_scroll = make_scrollable_section(bottom_frame, "📢 Advertised Projects")
     projects_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=5)
 
-    # === FLOATING AI ASSISTANT ===
-        # === FLOATING AI ASSISTANT ===
+    # === FLOATING AI ASSISTANT (Chat with bubbles) ===
     def open_ai_popup():
         popup = tk.Toplevel(content_frame)
         popup.title("🤖 AI Assistant")
@@ -173,23 +171,67 @@ def dashboard_view(content_frame, user_id, user_email=None):
             bg="white", fg="#2c3e50"
         ).pack(anchor="w", padx=15, pady=10)
 
-        # Frame to hold chat + input
-        main_frame = tk.Frame(popup, bg="white")
-        main_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        # Scrollable chat area
+        chat_frame = tk.Frame(popup, bg="white")
+        chat_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
-        # Chat display
-        chat_display = tk.Text(
-            main_frame, wrap="word", state="disabled",
-            bg="#f9f9f9", fg="#2c3e50", height=20
+        canvas = tk.Canvas(chat_frame, bg="white", highlightthickness=0)
+        scrollbar = tk.Scrollbar(chat_frame, orient="vertical", command=canvas.yview)
+        messages_frame = tk.Frame(canvas, bg="white")
+
+        messages_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
-        chat_display.pack(fill="both", expand=True, side="top")
+
+        canvas.create_window((0, 0), window=messages_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
         # Input area
-        input_frame = tk.Frame(main_frame, bg="white")
+        input_frame = tk.Frame(popup, bg="white")
         input_frame.pack(fill="x", side="bottom", pady=5)
 
         user_input = tk.Entry(input_frame, font=("Helvetica", 10))
         user_input.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        def add_message(text, role="user"):
+            bubble = tk.Frame(messages_frame, bg="white")
+            bubble.pack(anchor="e" if role == "user" else "w", pady=4, padx=5, fill="x")
+
+            if role == "user":
+                lbl = tk.Label(
+                    bubble, text=f"👤 {text}",
+                    bg="#d0e6ff", fg="#2c3e50",
+                    font=("Helvetica", 10), wraplength=250,
+                    justify="left", padx=10, pady=5, bd=0,
+                    relief="solid"
+                )
+                lbl.pack(anchor="e")
+            elif role == "ai":
+                lbl = tk.Label(
+                    bubble, text=f"🤖 {text}",
+                    bg="#e8f5e9", fg="#2c3e50",
+                    font=("Helvetica", 10, "italic"), wraplength=250,
+                    justify="left", padx=10, pady=5, bd=0,
+                    relief="solid"
+                )
+                lbl.pack(anchor="w")
+            elif role == "system":
+                lbl = tk.Label(
+                    bubble, text=text,
+                    bg="#f0f0f0", fg="#7f8c8d",
+                    font=("Helvetica", 9, "italic"),
+                    wraplength=250, padx=10, pady=5
+                )
+                lbl.pack(anchor="c")
+
+            canvas.update_idletasks()
+            canvas.yview_moveto(1.0)
+
+            return bubble
 
         def send_message(event=None):
             msg = user_input.get().strip()
@@ -197,26 +239,13 @@ def dashboard_view(content_frame, user_id, user_email=None):
                 return
             user_input.delete(0, tk.END)
 
-            # Show user message
-            chat_display.config(state="normal")
-            chat_display.insert(tk.END, f"👤 You: {msg}\n")
-            # Insert temporary "thinking..." placeholder
-            chat_display.insert(tk.END, "🤖 AI: thinking...\n")
-            chat_display.config(state="disabled")
-            chat_display.see(tk.END)
-
-            # Remember where "thinking..." starts
-            thinking_index = chat_display.index("end-2l linestart")
+            add_message(msg, role="user")
+            thinking_bubble = add_message("thinking...", role="system")
 
             def fetch_response():
                 reply = agent.query_gemini(msg)
-
-                chat_display.config(state="normal")
-                # Delete "thinking..." line and replace with real response
-                chat_display.delete(thinking_index, f"{thinking_index} lineend+1c")
-                chat_display.insert(tk.END, f"🤖 AI: {reply}\n\n")
-                chat_display.config(state="disabled")
-                chat_display.see(tk.END)
+                thinking_bubble.destroy()
+                add_message(reply, role="ai")
 
             threading.Thread(target=fetch_response, daemon=True).start()
 
