@@ -9,12 +9,15 @@ def projects_view(content_frame, user_id):
     for widget in content_frame.winfo_children():
         widget.destroy()
 
-    tk.Label(
+    # === HEADER ===
+    header = tk.Label(
         content_frame,
         text="📂 My Projects",
-        font=("Helvetica", 16, "bold"),
-        bg="#ecf0f1"
-    ).pack(pady=20)
+        font=("Helvetica", 18, "bold"),
+        bg="#ecf0f1",
+        fg="#2c3e50"
+    )
+    header.pack(pady=20, anchor="w", padx=20)
 
     projects_frame = tk.Frame(content_frame, bg="#ecf0f1")
     projects_frame.pack(fill="both", expand=True, padx=20, pady=10)
@@ -22,11 +25,11 @@ def projects_view(content_frame, user_id):
     try:
         logging.info("Fetching projects linked to freelancer %s...", user_id)
 
-        # Include Not Started, In Progress, and Completed
+        # Fetch projects where user has applied and been linked
         response = (
             supabase
             .table("projects")
-            .select("id, name, status, applications!inner(freelancer_id)")
+            .select("id, name, description, status, created_at, applications!inner(freelancer_id)")
             .in_("status", ["Not Started", "In Progress", "Completed"])
             .eq("applications.freelancer_id", user_id)
             .execute()
@@ -38,9 +41,10 @@ def projects_view(content_frame, user_id):
             tk.Label(
                 projects_frame,
                 text="You have no linked projects yet.",
-                font=("Helvetica", 12),
-                bg="#ecf0f1"
-            ).pack(pady=10)
+                font=("Helvetica", 12, "italic"),
+                bg="#ecf0f1",
+                fg="#7f8c8d"
+            ).pack(pady=15)
             return
 
         # --- Scrollable container ---
@@ -65,35 +69,111 @@ def projects_view(content_frame, user_id):
             "Completed": "#27ae60",     # green
         }
 
+        # --- Render projects ---
         for proj in projects:
             name = proj.get("name", "Untitled Project")
             status = proj.get("status", "Unknown")
+            desc = proj.get("description", "No description provided.")
+            created_at = proj.get("created_at", "")
 
-            item_frame = tk.Frame(scroll_frame, bg="white", bd=1, relief="solid", padx=10, pady=8)
-            item_frame.pack(fill="x", pady=5)
+            card = tk.Frame(
+                scroll_frame,
+                bg="white",
+                bd=2,
+                relief="groove",
+                padx=15,
+                pady=12
+            )
+            card.pack(fill="x", pady=8, padx=5)
+
+            # Top row (name + status badge)
+            top_row = tk.Frame(card, bg="white")
+            top_row.pack(fill="x")
 
             tk.Label(
-                item_frame,
+                top_row,
                 text=name,
-                font=("Helvetica", 12, "bold"),
+                font=("Helvetica", 13, "bold"),
                 bg="white",
                 fg="#2c3e50"
             ).pack(side="left", anchor="w")
 
             tk.Label(
-                item_frame,
+                top_row,
                 text=status,
-                font=("Helvetica", 10, "bold"),
+                font=("Helvetica", 9, "bold"),
                 bg=status_colors.get(status, "#bdc3c7"),
                 fg="white",
-                padx=8, pady=2
-            ).pack(side="right")
+                padx=10, pady=3
+            ).pack(side="right", anchor="e")
+
+            # Description
+            tk.Label(
+                card,
+                text=desc,
+                font=("Helvetica", 10),
+                bg="white",
+                fg="#34495e",
+                wraplength=500,
+                justify="left"
+            ).pack(anchor="w", pady=(6, 4))
+
+            # Metadata row
+            meta = f"📅 Created: {created_at}   |   🆔 ID: {proj.get('id')}"
+            tk.Label(
+                card,
+                text=meta,
+                font=("Helvetica", 9, "italic"),
+                bg="white",
+                fg="#7f8c8d"
+            ).pack(anchor="w", pady=(0, 6))
+
+            # --- Button row ---
+            btn_row = tk.Frame(card, bg="white")
+            btn_row.pack(anchor="e", pady=(5, 0))
+
+            def open_project(pid=proj["id"]):
+                logging.info(f"Opening project {pid}")
+                # TODO: integrate project detail view
+
+            def view_tasks(pid=proj["id"]):
+                logging.info(f"Viewing tasks for project {pid}")
+                # TODO: integrate tasks view
+
+            def mark_completed(pid=proj["id"]):
+                try:
+                    supabase.table("projects").update({"status": "Completed"}).eq("id", pid).execute()
+                    logging.info(f"Marked project {pid} as Completed")
+                    tk.Label(card, text="✅ Marked as Completed",
+                             font=("Helvetica", 9, "bold"),
+                             bg="white", fg="#27ae60").pack(anchor="e", pady=3)
+                except Exception as e:
+                    logging.exception("Error marking project completed")
+                    tk.Label(card, text=f"❌ Error: {e}",
+                             font=("Helvetica", 9),
+                             bg="white", fg="red").pack(anchor="e", pady=3)
+
+            for text, cmd, color in [
+                ("Open", open_project, "#2980b9"),
+                ("View Tasks", view_tasks, "#8e44ad"),
+                ("Mark Completed", mark_completed, "#27ae60"),
+            ]:
+                tk.Button(
+                    btn_row,
+                    text=text,
+                    command=cmd,
+                    bg=color,
+                    fg="white",
+                    font=("Helvetica", 9, "bold"),
+                    relief="flat",
+                    padx=8, pady=4
+                ).pack(side="right", padx=5)
 
     except Exception as e:
         logging.exception("Error fetching projects")
         tk.Label(
             projects_frame,
-            text=f"Error fetching projects: {e}",
+            text=f"❌ Error fetching projects: {e}",
             font=("Helvetica", 12),
             fg="red",
             bg="#ecf0f1"
